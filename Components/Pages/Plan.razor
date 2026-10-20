@@ -1,0 +1,349 @@
+@page "/plan"
+@rendermode InteractiveServer
+@implements IDisposable
+@inject SavedPlaces Saved
+
+<PageTitle>Plan a trip | Lakbay</PageTitle>
+
+@{
+    var chosen = SelectedDestination;
+    var preview = Preview;
+    var doneCount = steps.Count(s => s.IsDone(this));
+    var readiness = (int)Math.Round(doneCount * 100.0 / steps.Length);
+}
+
+<section class="wrap page-lead">
+    <p class="eyebrow kicker text-sun">Your next chapter / The trip builder</p>
+    <h1 class="display-small">Let's make <em>plans.</em></h1>
+    <div class="lead-grid">
+        <p class="lede">No spreadsheets, no pressure. Choose a place and a few details, and we'll put together a trip sketch you can build on.</p>
+    </div>
+    @if (blueprint is null)
+    {
+        <div class="progress" aria-label="Trip sketch progress">
+            <div class="flex flex-wrap justify-between gap-2">
+                <span class="eyebrow">Your sketch is <span class="num">@readiness%</span> ready</span>
+                <span class="eyebrow muted">@doneCount of @steps.Length steps</span>
+            </div>
+            <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@readiness">
+                <div class="progress-fill" style="width:@readiness%"></div>
+            </div>
+            <ol class="steps">
+                @for (var i = 0; i < steps.Length; i++)
+                {
+                    var done = steps[i].IsDone(this);
+                    <li data-done="@Ui.Bool(done)">
+                        <span class="dot">@(done ? "✓" : (i + 1).ToString())</span>@steps[i].Label
+                    </li>
+                }
+            </ol>
+        </div>
+    }
+</section>
+
+<section class="wrap pt-12">
+    <div class="form-shell">
+        <div>
+            @if (blueprint is null)
+            {
+                <EditForm Model="@form" OnValidSubmit="BuildTrip" FormName="lakbay-plan" novalidate>
+                    <DataAnnotationsValidator />
+
+                    @* ---------- 01 Where ---------- *@
+                    <div class="plan-section">
+                        <div class="section-head">
+                            <span class="step-no">01</span>
+                            <h2>Where to?</h2>
+                            <p>Tap a place. You can change your mind later.</p>
+                        </div>
+                        <InputRadioGroup @bind-Value="form.DestinationId" Name="destination">
+                            <div class="place-tiles" role="radiogroup" aria-label="Destination">
+                                @foreach (var d in SampleData.Destinations)
+                                {
+                                    <label class="place-tile">
+                                        <InputRadio Value="d.Id" class="sr-only" />
+                                        <img src="@d.ImagePath" alt="" loading="lazy" />
+                                        <span class="check" aria-hidden="true">✓</span>
+                                        <span class="tile-text"><small>@d.Province</small><strong>@d.Name</strong></span>
+                                    </label>
+                                }
+                            </div>
+                        </InputRadioGroup>
+                        <ValidationMessage For="@(() => form.DestinationId)" />
+                    </div>
+
+                    @* ---------- 02 When ---------- *@
+                    <div class="plan-section">
+                        <div class="section-head">
+                            <span class="step-no">02</span>
+                            <h2>When?</h2>
+                            <p>Arrival and departure dates.</p>
+                        </div>
+                        <div class="form-grid">
+                            <div>
+                                <label for="arrival" class="field-label">Arriving *</label>
+                                <InputDate id="arrival" class="field" @bind-Value="form.Arrival" min="@DateTime.Today.ToString("yyyy-MM-dd")" />
+                                <ValidationMessage For="@(() => form.Arrival)" />
+                            </div>
+                            <div>
+                                <label for="departure" class="field-label">Leaving *</label>
+                                <InputDate id="departure" class="field" @bind-Value="form.Departure" min="@form.Arrival.AddDays(1).ToString("yyyy-MM-dd")" />
+                                <ValidationMessage For="@(() => form.Departure)" />
+                            </div>
+                            <div class="form-full">
+                                @if (DatesValid)
+                                {
+                                    <span class="nights-badge"><span aria-hidden="true">☾</span> <span class="num">@Nights</span> @(Nights == 1 ? "night" : "nights") in @(chosen?.Name)</span>
+                                }
+                                else
+                                {
+                                    <span class="nights-badge">Pick a departure after your arrival</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    @* ---------- 03 Who ---------- *@
+                    <div class="plan-section">
+                        <div class="section-head">
+                            <span class="step-no">03</span>
+                            <h2>Who's going?</h2>
+                            <p>So we can size the sketch.</p>
+                        </div>
+                        <div class="form-grid">
+                            <div>
+                                <label for="traveler-name" class="field-label">Your name *</label>
+                                <InputText id="traveler-name" class="field" @bind-Value="form.Name" placeholder="How should we call you?" autocomplete="name" />
+                                <ValidationMessage For="@(() => form.Name)" />
+                            </div>
+                            <div>
+                                <label for="traveler-email" class="field-label">Email address *</label>
+                                <InputText id="traveler-email" type="email" class="field" @bind-Value="form.Email" placeholder="you@example.com" autocomplete="email" />
+                                <ValidationMessage For="@(() => form.Email)" />
+                            </div>
+                            <div>
+                                <label for="travelers" class="field-label">Travelers *</label>
+                                <div class="stepper">
+                                    <button type="button" aria-label="One fewer traveler" disabled="@(form.Travelers <= 1)" @onclick="() => ChangeTravelers(-1)">−</button>
+                                    <InputNumber id="travelers" class="field" @bind-Value="form.Travelers" min="1" max="12" />
+                                    <button type="button" aria-label="One more traveler" disabled="@(form.Travelers >= 12)" @onclick="() => ChangeTravelers(1)">+</button>
+                                </div>
+                                <ValidationMessage For="@(() => form.Travelers)" />
+                            </div>
+                        </div>
+                    </div>
+
+                    @* ---------- 04 Style ---------- *@
+                    <div class="plan-section">
+                        <div class="section-head">
+                            <span class="step-no">04</span>
+                            <h2>Your style</h2>
+                            <p>How full should the days feel?</p>
+                        </div>
+                        <InputRadioGroup @bind-Value="form.Pace" @bind-Value:after="MarkPaceChosen" Name="pace">
+                            <div class="pace-cards" role="radiogroup" aria-label="Travel pace">
+                                @foreach (var pace in Enum.GetValues<TravelPace>())
+                                {
+                                    <label class="pace-card">
+                                        <InputRadio Value="pace" class="sr-only" />
+                                        <span class="pace-icon" aria-hidden="true">@TravelLabels.Dots(pace)</span>
+                                        <strong>@TravelLabels.Label(pace)</strong>
+                                        <small>@TravelLabels.Blurb(pace)</small>
+                                    </label>
+                                }
+                            </div>
+                        </InputRadioGroup>
+                        <div class="mt-6">
+                            <label for="notes" class="field-label">Anything else? (optional)</label>
+                            <textarea id="notes" class="field field-area" maxlength="400" placeholder="Waterfalls? A food crawl? A very slow morning?"
+                                      @bind="form.Notes" @bind:event="oninput"></textarea>
+                            <div class="field-hint"><span>Tell us what would make it yours.</span><span class="num">@(form.Notes?.Length ?? 0) / 400</span></div>
+                            <ValidationMessage For="@(() => form.Notes)" />
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-5 pt-8">
+                        <button type="submit" class="btn-sun" disabled="@isBuilding">
+                            @if (isBuilding)
+                            {
+                                <span class="inline-block size-4 animate-spin rounded-full border-2 border-whitewarm border-t-transparent" aria-hidden="true"></span>
+                                <span>Sketching your trip…</span>
+                            }
+                            else
+                            {
+                                <span>Make my trip sketch</span>
+                                <span class="arrow" aria-hidden="true">↗</span>
+                            }
+                        </button>
+                        <p class="muted max-w-sm text-xs leading-5" aria-live="polite">A front-end planning preview. Nothing is booked, sent or saved.</p>
+                    </div>
+                </EditForm>
+            }
+            else
+            {
+                @* ---------- Success: a boarding pass ---------- *@
+                <div class="boarding-pass" role="status">
+                    <div class="main">
+                        <p class="eyebrow text-sun">Trip sketch ready / All yours</p>
+                        <h2 class="section-title mt-4">Now the fun <em>begins</em>, @FirstName.</h2>
+                        <p class="muted mt-4 text-sm leading-7">Here's a starting point for your trip to @blueprint.Destination.Name. Nothing has been booked or sent; this preview stays on this page until you leave.</p>
+                        <div class="pass-grid">
+                            <div><span class="eyebrow muted">Destination</span><span class="num">@blueprint.Destination.Name</span></div>
+                            <div><span class="eyebrow muted">Crew</span><span class="num">@blueprint.Travelers @(blueprint.Travelers == 1 ? "traveler" : "travelers")</span></div>
+                            <div><span class="eyebrow muted">Pace</span><span class="num">@TravelLabels.Label(blueprint.Pace)</span></div>
+                            <div><span class="eyebrow muted">Arrive</span><span class="num">@blueprint.Arrival.ToString("MMM d")</span></div>
+                            <div><span class="eyebrow muted">Leave</span><span class="num">@blueprint.Departure.ToString("MMM d, yyyy")</span></div>
+                            <div><span class="eyebrow muted">Nights</span><span class="num">@blueprint.Nights</span></div>
+                        </div>
+                        <p class="muted mt-6 text-xs leading-5">The budget is a planning range, not a price quote. Flights and seasonal changes may affect costs.</p>
+                        <div class="mt-7 flex flex-wrap gap-3">
+                            <button type="button" class="btn-primary" @onclick="EditTrip">Edit my plan <span class="arrow" aria-hidden="true">↗</span></button>
+                            <button type="button" class="btn-outline" @onclick="StartOver">Start over</button>
+                        </div>
+                    </div>
+                    <div class="stub on-dark">
+                        <div>
+                            <p class="eyebrow text-gold">Sketch no.</p>
+                            <p class="num mt-2 text-base">@blueprint.Reference</p>
+                        </div>
+                        <div>
+                            <p class="eyebrow text-gold">Budget range</p>
+                            <p class="num mt-2 text-lg leading-snug">@TravelLabels.Peso(blueprint.EstimatedLow)<br />– @TravelLabels.Peso(blueprint.EstimatedHigh)</p>
+                        </div>
+                        <div class="barcode" aria-hidden="true"></div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        @* ---------- Live sketch ---------- *@
+        <aside class="planner-aside on-dark" aria-label="Live trip sketch" aria-live="polite">
+            @if (chosen is not null)
+            {
+                <div class="image-frame" @key="chosen.Id">
+                    <img class="place-image" src="@chosen.ImagePath" alt="@chosen.ImageAlt" loading="lazy" />
+                    <span class="sticker absolute left-4 top-4">Live sketch</span>
+                </div>
+                <div class="aside-body">
+                    <p class="eyebrow text-gold">@chosen.LocationLabel</p>
+                    <h2 class="section-title mt-3">@chosen.Name</h2>
+                    <p class="mt-3 text-sm leading-6 text-[#cfdad3]">@chosen.Tagline. @chosen.SignatureExperience.</p>
+                    <dl class="mt-6">
+                        <div class="aside-row"><dt>Dates</dt><dd>@(DatesValid ? $"{form.Arrival:MMM d} – {form.Departure:MMM d}" : "Not set yet")</dd></div>
+                        <div class="aside-row"><dt>Nights</dt><dd class="num">@(DatesValid ? Nights.ToString() : "–")</dd></div>
+                        <div class="aside-row"><dt>Travelers</dt><dd class="num">@form.Travelers</dd></div>
+                        <div class="aside-row"><dt>Pace</dt><dd>@TravelLabels.Label(form.Pace)</dd></div>
+                        <div class="aside-row"><dt>Best time</dt><dd>@chosen.BestTime</dd></div>
+                    </dl>
+                    <div class="mt-2 border-t border-[rgba(255,252,244,.16)] pt-5">
+                        <p class="eyebrow text-gold">Illustrative budget</p>
+                        @if (preview is not null)
+                        {
+                            var scale = (double)preview.EstimatedHigh * 1.25;
+                            <p class="num mt-3 text-[26px] leading-tight">@TravelLabels.Peso(preview.EstimatedLow) – @TravelLabels.Peso(preview.EstimatedHigh)</p>
+                            <div class="range-bar" aria-hidden="true">
+                                <span style="left:@Ui.Percent((double)preview.EstimatedLow, 0, scale); right:@Ui.Percent(scale - (double)preview.EstimatedHigh, 0, scale)"></span>
+                            </div>
+                            <p class="mt-3 text-xs text-[#b9c8bf]">For @preview.Travelers @(preview.Travelers == 1 ? "traveler" : "travelers"), @preview.Nights @(preview.Nights == 1 ? "night" : "nights"), before flights.</p>
+                        }
+                        else
+                        {
+                            <p class="mt-3 text-sm text-[#cfdad3]">Add valid dates to see a budget range.</p>
+                        }
+                    </div>
+
+                    @if (Saved.Count > 0)
+                    {
+                        <div class="mt-6 border-t border-[rgba(255,252,244,.16)] pt-5">
+                            <p class="eyebrow text-gold">From your saved places</p>
+                            <div class="mt-3 flex flex-wrap gap-2">
+                                @foreach (var fav in SavedDestinations)
+                                {
+                                    <button type="button" class="chip" aria-pressed="@Ui.Bool(fav.Id == form.DestinationId)" @onclick="() => PickDestination(fav.Id)">@fav.Name</button>
+                                }
+                            </div>
+                        </div>
+                    }
+                    <p class="mt-6 text-xs leading-6 text-[#b9c8bf]">Travel responsibly. Check local advisories, weather, access requirements and transport before you set off.</p>
+                </div>
+            }
+        </aside>
+    </div>
+</section>
+
+@code {
+    [SupplyParameterFromQuery(Name = "place")]
+    public int? Place { get; set; }
+
+    /// <summary>A progress step: a label plus a rule that reads the current form.</summary>
+    private sealed record PlanStep(string Label, Func<Plan, bool> IsDone);
+
+    private static readonly PlanStep[] steps =
+    {
+        new("Where", p => p.SelectedDestination is not null),
+        new("When", p => p.DatesValid),
+        new("Who", p => p.form.Name.Trim().Length >= 2 && p.form.Email.Contains('@') && p.form.Travelers is >= 1 and <= 12),
+        new("Style", p => p.paceChosen || !string.IsNullOrWhiteSpace(p.form.Notes))
+    };
+
+    private TripInquiry form = new();
+    private TripBlueprint? blueprint;
+    private bool isBuilding;
+    private bool paceChosen;
+    private int? appliedPlace;
+
+    private Destination? SelectedDestination => SampleData.FindDestination(form.DestinationId);
+
+    private bool DatesValid => form.Arrival.Date >= DateTime.Today && form.Departure.Date > form.Arrival.Date;
+
+    private int Nights => Math.Max(1, (form.Departure.Date - form.Arrival.Date).Days);
+
+    private TripBlueprint? Preview => SelectedDestination is { } d && DatesValid
+        ? new TripBlueprint(d, form.Arrival, form.Departure, Math.Clamp(form.Travelers, 1, 12), form.Pace)
+        : null;
+
+    private IEnumerable<Destination> SavedDestinations =>
+        Saved.Ids.Select(id => SampleData.FindDestination(id)).OfType<Destination>();
+
+    private string FirstName => form.Name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "traveler";
+
+    protected override void OnInitialized() => Saved.Changed += OnSavedChanged;
+
+    protected override void OnParametersSet()
+    {
+        // /plan?place=3 preselects Siargao, once per distinct link, without overwriting a finished sketch.
+        if (Place == appliedPlace) return;
+        appliedPlace = Place;
+        if (Place is int id && SampleData.FindDestination(id) is not null && blueprint is null)
+            form.DestinationId = id;
+    }
+
+    private void PickDestination(int id) => form.DestinationId = id;
+
+    private void ChangeTravelers(int delta) => form.Travelers = Math.Clamp(form.Travelers + delta, 1, 12);
+
+    private void MarkPaceChosen() => paceChosen = true;
+
+    private async Task BuildTrip()
+    {
+        if (isBuilding) return;
+        isBuilding = true;
+        await Task.Delay(900); // visible loading state; no API call or booking happens
+        if (SelectedDestination is { } d)
+            blueprint = new TripBlueprint(d, form.Arrival, form.Departure, form.Travelers, form.Pace);
+        isBuilding = false;
+    }
+
+    private void EditTrip() => blueprint = null;
+
+    private void StartOver()
+    {
+        form = new TripInquiry();
+        blueprint = null;
+        paceChosen = false;
+    }
+
+    private void OnSavedChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Saved.Changed -= OnSavedChanged;
+}
