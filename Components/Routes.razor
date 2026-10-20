@@ -1,0 +1,19 @@
+<Router AppAssembly="typeof(Program).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="typeof(Layout.MainLayout)">
+            <section class="wrap page-lead">
+                <p class="eyebrow kicker text-sun">Error 404 / Off the map</p>
+                <h1 class="display-small">This road <em>goes nowhere.</em></h1>
+                <p class="lede mt-6">The page you were looking for doesn't exist, or it has wandered off.</p>
+                <div class="mt-8 flex flex-wrap gap-4">
+                    <a href="/" class="btn-primary">Back home <span class="arrow" aria-hidden="true">↗</span></a>
+                    <a href="/discover" class="btn-outline">Explore places</a>
+                </div>
+            </section>
+        </LayoutView>
+    </NotFound>
+</Router>
