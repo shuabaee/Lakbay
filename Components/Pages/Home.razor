@@ -1,0 +1,295 @@
+@page "/"
+@rendermode InteractiveServer
+@implements IDisposable
+@inject SavedPlaces Saved
+
+<PageTitle>Lakbay | A Philippine travel field guide</PageTitle>
+
+@* ============================== HERO ============================== *@
+<section class="wrap hero">
+    <div class="hero-copy">
+        <p class="eyebrow kicker enter">Not just a place. A feeling.</p>
+        <h1 class="display enter" style="--i:1">Find your <em>own kind</em> of paradise.</h1>
+        <p class="lede enter" style="--i:2">@IslandCount islands and endless ways to feel alive. Take the long way around the Philippines, one unforgettable place at a time.</p>
+        <div class="enter mt-9 flex flex-wrap items-center gap-x-7 gap-y-3" style="--i:3">
+            <a href="/discover" class="btn-sun">Explore the islands <span class="arrow" aria-hidden="true">↗</span></a>
+            <a href="/journal" class="link-arrow">Read our field notes <span class="arrow" aria-hidden="true">↗</span></a>
+        </div>
+        <div class="hero-stats enter" style="--i:4">
+            <div><span class="num">@IslandCount</span><span class="eyebrow">Islands</span></div>
+            <div><span class="num">@(Enum.GetValues<IslandGroup>().Length)</span><span class="eyebrow">Island groups</span></div>
+            <div><span class="num">@SampleData.Destinations.Count</span><span class="eyebrow">Field-tested places</span></div>
+        </div>
+    </div>
+
+    @* Interactive postcard stack: arrows, dots, or click a card behind to bring it forward *@
+    <div class="postcards" role="region" aria-roledescription="carousel" aria-label="Featured postcards">
+        @for (var i = 0; i < featured.Count; i++)
+        {
+            var index = i;
+            var place = featured[i];
+            var pos = (i - card + featured.Count) % featured.Count;
+            <figure class="postcard" data-pos="@pos" aria-hidden="@Ui.Bool(pos != 0)" @onclick="() => ShowCard(index)">
+                <div class="image-frame">
+                    <img class="place-image" src="@place.ImagePath" alt="@place.ImageAlt" fetchpriority="@(i == 0 ? "high" : "low")" />
+                    <div class="stamp" aria-hidden="true"><span>L</span></div>
+                </div>
+                <figcaption>
+                    <span class="caption-title">@place.Tagline.</span>
+                    <span class="caption-meta">
+                        <span>No. @Ui.Pad(i + 1) &middot; @place.Name, @place.Province</span>
+                        <span class="num">@place.CoordinateLabel</span>
+                    </span>
+                </figcaption>
+                <div class="postmark" aria-hidden="true"><span>Lakbay<br />✳<br />@place.Name</span></div>
+            </figure>
+        }
+        <div class="postcard-controls">
+            <button type="button" class="icon-button" aria-label="Previous postcard" @onclick="() => Step(-1)">←</button>
+            <div class="postcard-dots">
+                @for (var i = 0; i < featured.Count; i++)
+                {
+                    var index = i;
+                    <button type="button" aria-label="Show postcard @(i + 1): @featured[i].Name" aria-current="@Ui.Bool(i == card)" @onclick="() => ShowCard(index)"><span></span></button>
+                }
+            </div>
+            <button type="button" class="icon-button" aria-label="Next postcard" @onclick="() => Step(1)">→</button>
+        </div>
+    </div>
+</section>
+
+@* ============================== MARQUEE ============================== *@
+<div class="marquee" aria-hidden="true">
+    <div class="marquee-track">
+        @for (var copy = 0; copy < 2; copy++)
+        {
+            <span>
+                @foreach (var word in marqueeWords)
+                {
+                    <b>@word</b>
+                    <i class="spark">✳</i>
+                }
+            </span>
+        }
+    </div>
+</div>
+
+@* ============================== MOOD PICKER ============================== *@
+<section class="wrap py-20 lg:py-28" aria-labelledby="mood-heading">
+    <div class="mood-shell">
+        <div>
+            <p class="eyebrow kicker text-sun">Choose a feeling</p>
+            <h2 id="mood-heading" class="section-title mt-5">What kind of trip <em>are you after?</em></h2>
+            <p class="lede mt-5">Start with the mood, not the map. Pick one and we'll show you where it lives.</p>
+            <div class="mood-tabs" role="tablist" aria-label="Travel moods">
+                @{ var tabNo = 0; }
+                @foreach (var m in Enum.GetValues<TravelMood>())
+                {
+                    tabNo++;
+                    var count = SampleData.Destinations.Count(d => d.Mood == m);
+                    <button type="button" class="mood-tab" role="tab" aria-selected="@Ui.Bool(mood == m)" aria-controls="mood-panel" @onclick="() => SetMood(m)">
+                        <span class="idx num">@Ui.Pad(tabNo)</span>
+                        <span class="label">@TravelLabels.Label(m)</span>
+                        <span class="count">@count @(count == 1 ? "place" : "places")</span>
+                    </button>
+                }
+            </div>
+        </div>
+
+        @if (MoodPlace is { } mp)
+        {
+            <div id="mood-panel" class="mood-panel" role="tabpanel" @key="mp.Id">
+                <a href="@($"/discover?open={mp.Id}")" class="image-frame block" aria-label="Open @mp.Name in Discover">
+                    <img class="place-image" src="@mp.ImagePath" alt="@mp.ImageAlt" loading="lazy" />
+                    <span class="sticker absolute left-4 top-4">@mp.MoodLabel</span>
+                </a>
+                <div>
+                    <p class="eyebrow muted">@mp.LocationLabel</p>
+                    <h3 class="section-title mt-3">@mp.Name</h3>
+                    <p class="muted mt-4 text-[15px] leading-7">@mp.Description</p>
+                    <p class="eyebrow mt-6">Don't miss</p>
+                    <p class="serif mt-2 text-xl italic">@mp.SignatureExperience</p>
+                    @if (MoodPlaces.Count > 1)
+                    {
+                        <div class="mood-others" aria-label="Other @TravelLabels.Label(mood) places">
+                            @foreach (var other in MoodPlaces)
+                            {
+                                <button type="button" class="chip" aria-pressed="@Ui.Bool(other.Id == mp.Id)" @onclick="() => moodPick = other.Id">@other.Name</button>
+                            }
+                        </div>
+                    }
+                    <a href="@($"/plan?place={mp.Id}")" class="btn-primary mt-7">Plan @mp.Name <span class="arrow" aria-hidden="true">↗</span></a>
+                </div>
+            </div>
+        }
+    </div>
+</section>
+
+@* ============================== FEATURED ============================== *@
+<section class="wrap pb-20 lg:pb-28" aria-labelledby="featured-heading">
+    <div class="mb-12 flex flex-wrap items-end justify-between gap-7">
+        <div>
+            <p class="eyebrow kicker text-sun">A few places to start</p>
+            <h2 id="featured-heading" class="section-title mt-5">A world of <em>somewheres.</em></h2>
+        </div>
+        <a href="/discover" class="btn-outline">See all destinations <span class="arrow" aria-hidden="true">↗</span></a>
+    </div>
+    <div class="feature-grid">
+        @for (var i = 0; i < featured.Count; i++)
+        {
+            var place = featured[i];
+            var isSaved = Saved.Contains(place.Id);
+            <article class="feature-card min-w-0">
+                <div class="image-frame">
+                    <a href="@($"/discover?open={place.Id}")" class="absolute inset-0 block" aria-label="See details for @place.Name">
+                        <img class="place-image" src="@place.ImagePath" alt="@place.ImageAlt" loading="lazy" />
+                        <span class="reveal-panel">
+                            <span class="eyebrow block text-gold">Don't miss</span>
+                            <span class="serif mt-2 block text-lg italic leading-snug">@place.SignatureExperience</span>
+                        </span>
+                    </a>
+                    <span class="sticker absolute left-4 top-4">@place.MoodLabel</span>
+                    <button type="button" class="circle-button heart absolute right-4 top-4" aria-pressed="@Ui.Bool(isSaved)"
+                            aria-label="@(isSaved ? $"Remove {place.Name} from saved" : $"Save {place.Name}")" @onclick="() => Saved.Toggle(place.Id)">
+                        <HeartIcon />
+                    </button>
+                </div>
+                <div class="card-meta">
+                    <div>
+                        <p class="eyebrow muted">@place.LocationLabel</p>
+                        <h3 class="mt-3">@place.Name</h3>
+                        <p class="muted mt-2 text-sm leading-6">@place.Tagline</p>
+                    </div>
+                    <span class="ordinal">@Ui.Pad(i + 1)</span>
+                </div>
+            </article>
+        }
+    </div>
+</section>
+
+@* ============================== ISLAND GROUPS ============================== *@
+<section class="wrap pb-20 lg:pb-28" aria-labelledby="groups-heading">
+    <p class="eyebrow kicker text-sun">Three island groups</p>
+    <h2 id="groups-heading" class="section-title mt-5 mb-10">Pick a <em>direction.</em></h2>
+    <div class="group-list">
+        @foreach (var g in Enum.GetValues<IslandGroup>())
+        {
+            var inGroup = SampleData.Destinations.Where(d => d.IslandGroup == g).ToList();
+            <a href="@($"/discover?region={g}")" class="group-row">
+                <span class="num text-sm muted">@Ui.Pad(inGroup.Count)</span>
+                <span class="group-name">@g</span>
+                <span class="group-places">@(string.Join(" · ", inGroup.Select(d => d.Name)))</span>
+                <span class="group-arrow" aria-hidden="true">→</span>
+                @if (inGroup.Count > 0)
+                {
+                    <img class="group-thumb" src="@inGroup[0].ImagePath" alt="" loading="lazy" />
+                }
+            </a>
+        }
+    </div>
+</section>
+
+@* ============================== EDITORIAL BAND ============================== *@
+<section class="band on-dark" aria-labelledby="band-heading">
+    <div class="band-copy">
+        <span class="quote-mark" aria-hidden="true">“</span>
+        <p class="eyebrow mt-4 text-gold">From our travel notebook / 01</p>
+        <h2 id="band-heading" class="section-title mt-5 mb-5">The journey is the <em>good part.</em></h2>
+        <p class="mb-9 max-w-[440px] text-[15px] leading-8">Not everything worth finding is on a map. Take the side streets, say good morning, ask for the family recipe. That's where the Philippines really begins.</p>
+        <a class="btn-sun" href="/journal">Open the field notes <span class="arrow" aria-hidden="true">↗</span></a>
+    </div>
+    <div class="band-media">
+        <div class="frame">
+            <img src="/images/vigan.webp" alt="Warm cobblestone street and old buildings in Vigan" loading="lazy" />
+        </div>
+    </div>
+</section>
+
+@* ============================== BUDGET EXPLORER ============================== *@
+<section class="wrap py-20 lg:py-28" aria-labelledby="budget-heading">
+    <div class="budget">
+        <div>
+            <p class="eyebrow kicker text-sun">Budget explorer</p>
+            <h2 id="budget-heading" class="section-title mt-5">How far does <em>a trip go?</em></h2>
+            <p class="lede mt-5">Slide the days and the crew. Totals use each place's illustrative daily guide in pesos, before flights.</p>
+            <div class="budget-controls">
+                <div class="range-row">
+                    <div class="range-head"><label class="field-label mb-0" for="budget-days">Days</label><span class="num">@days</span></div>
+                    <input id="budget-days" class="range" type="range" min="1" max="10" @bind="days" @bind:event="oninput" style="--fill:@Ui.Percent(days, 1, 10)" />
+                </div>
+                <div class="range-row">
+                    <div class="range-head"><label class="field-label mb-0" for="budget-crew">Travelers</label><span class="num">@travelers</span></div>
+                    <input id="budget-crew" class="range" type="range" min="1" max="6" @bind="travelers" @bind:event="oninput" style="--fill:@Ui.Percent(travelers, 1, 6)" />
+                </div>
+            </div>
+        </div>
+        <div>
+            <div class="mb-4 flex justify-between"><span class="eyebrow muted">Place</span><span class="eyebrow muted">Est. total</span></div>
+            @{
+                var rows = BudgetRows;
+                var maxTotal = (double)rows.Max(x => x.Total);
+            }
+            <div class="bars" role="list">
+                @for (var r = 0; r < rows.Count; r++)
+                {
+                    var row = rows[r];
+                    <div class="bar-row @(r == 0 ? "is-cheapest" : "")" role="listitem">
+                        <span class="name">@row.Place.Name</span>
+                        <span class="track" aria-hidden="true"><span class="fill" style="width:@Ui.Percent((double)row.Total, 0, maxTotal)"></span></span>
+                        <span class="total num">@TravelLabels.Peso(row.Total)</span>
+                    </div>
+                }
+            </div>
+            <p class="muted mt-4 text-xs">The lightest-on-the-wallet pick is in red. @days @(days == 1 ? "day" : "days"), @travelers @(travelers == 1 ? "traveler" : "travelers").</p>
+        </div>
+    </div>
+</section>
+
+@* ============================== PRINCIPLES ============================== *@
+<section class="wrap" aria-label="How we travel">
+    <div class="principles">
+        <div><span class="number">01</span><p class="eyebrow mt-4">Go curious</p><p class="muted mt-2 text-sm leading-6">Follow an interesting road.</p></div>
+        <div><span class="number">02</span><p class="eyebrow mt-4">Go kindly</p><p class="muted mt-2 text-sm leading-6">Respect people and places.</p></div>
+        <div><span class="number">03</span><p class="eyebrow mt-4">Go your way</p><p class="muted mt-2 text-sm leading-6">Make the journey your own.</p></div>
+    </div>
+</section>
+
+@code {
+    private const string IslandCount = "7,641";
+    private static readonly string[] marqueeWords =
+        { "Wander more", "Worry less", "Luzon", "Visayas", "Mindanao", "It's more fun when you get there" };
+
+    private readonly List<Destination> featured = SampleData.Destinations.Where(d => d.Featured).ToList();
+    private int card;
+
+    private TravelMood mood = TravelMood.Coast;
+    private int? moodPick;
+
+    private int days = 5;
+    private int travelers = 2;
+
+    private List<Destination> MoodPlaces => SampleData.Destinations.Where(d => d.Mood == mood).ToList();
+    private Destination? MoodPlace => MoodPlaces.FirstOrDefault(d => d.Id == moodPick) ?? MoodPlaces.FirstOrDefault();
+
+    private List<(Destination Place, decimal Total)> BudgetRows =>
+        SampleData.Destinations
+            .Select(d => (Place: d, Total: d.EstimateBudget(days, travelers)))
+            .OrderBy(r => r.Total)
+            .ToList();
+
+    protected override void OnInitialized() => Saved.Changed += OnSavedChanged;
+
+    private void OnSavedChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private void ShowCard(int index) => card = index;
+
+    private void Step(int delta) => card = (card + delta + featured.Count) % featured.Count;
+
+    private void SetMood(TravelMood value)
+    {
+        mood = value;
+        moodPick = null;
+    }
+
+    public void Dispose() => Saved.Changed -= OnSavedChanged;
+}
