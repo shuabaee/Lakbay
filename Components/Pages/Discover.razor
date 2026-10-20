@@ -1,0 +1,334 @@
+@page "/discover"
+@rendermode InteractiveServer
+@implements IDisposable
+@inject SavedPlaces Saved
+@inject IJSRuntime JS
+
+<PageTitle>Discover places | Lakbay</PageTitle>
+
+@{
+    // Computed once per render so the grid, counts and drawer navigation always agree.
+    var results = Filtered;
+}
+
+<section class="wrap page-lead">
+    <p class="eyebrow kicker text-sun">The destination directory / 001–@(SampleData.Destinations.Count.ToString("000"))</p>
+    <h1 class="display-small">Pick a <em>direction.</em></h1>
+    <div class="lead-grid">
+        <p class="lede">Clear water or cloud-kissed mountains? Find your next favorite place, from the northern highlands to the southern surf.</p>
+        <div class="lead-facts">
+            <div><span class="num">@Ui.Pad(SampleData.Destinations.Count)</span><span class="eyebrow">Places</span></div>
+            <div><span class="num">@(Ui.Pad(Enum.GetValues<IslandGroup>().Length))</span><span class="eyebrow">Island groups</span></div>
+            <div><span class="num">@TravelLabels.Peso(SampleData.LowestDailyBudget)</span><span class="eyebrow">From / day</span></div>
+        </div>
+    </div>
+</section>
+
+@* ============================== FILTERS ============================== *@
+<section class="wrap filter-panel" aria-label="Filter destinations">
+    <div class="filter-top">
+        <div>
+            <label class="field-label" for="place-search">Where do you want to go?</label>
+            <div class="search-field">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+                <input id="place-search" class="field" type="search" placeholder="Search a place, province or activity" autocomplete="off"
+                       @bind="search" @bind:event="oninput" />
+            </div>
+        </div>
+        <div class="sort-box">
+            <label class="field-label" for="sort-destinations">Sort by</label>
+            <select id="sort-destinations" class="field" @bind="sort">
+                <option value="curated">Our picks</option>
+                <option value="alphabetical">A to Z</option>
+                <option value="affordable">Lower daily budget</option>
+                <option value="days">Shortest stay</option>
+            </select>
+        </div>
+        <div>
+            <span class="field-label">View</span>
+            <div class="segmented" role="group" aria-label="Layout">
+                <button type="button" aria-pressed="@Ui.Bool(!listView)" @onclick="() => listView = false"><span aria-hidden="true">▦</span> Grid</button>
+                <button type="button" aria-pressed="@Ui.Bool(listView)" @onclick="() => listView = true"><span aria-hidden="true">☰</span> List</button>
+            </div>
+        </div>
+    </div>
+
+    <button type="button" class="chip filter-toggle mt-4" aria-expanded="@Ui.Bool(filtersOpen)" aria-controls="filter-body" @onclick="() => filtersOpen = !filtersOpen">
+        @(filtersOpen ? "Hide filters" : "Show filters")
+        @if (ActiveFilterCount > 0)
+        {
+            <span class="count">@ActiveFilterCount active</span>
+        }
+    </button>
+
+    <div id="filter-body" class="filter-body" data-open="@Ui.Bool(filtersOpen)">
+        <div class="filter-groups">
+            <div class="filter-group">
+                <span class="eyebrow muted">Island group</span>
+                <div class="flex flex-wrap gap-2" role="group" aria-label="Filter by island group">
+                    <button type="button" class="chip" aria-pressed="@Ui.Bool(region is null)" @onclick="() => region = null">All</button>
+                    @foreach (var g in Enum.GetValues<IslandGroup>())
+                    {
+                        <button type="button" class="chip" aria-pressed="@Ui.Bool(region == g)" @onclick="() => region = g">
+                            @g <span class="count">@(SampleData.Destinations.Count(d => d.IslandGroup == g))</span>
+                        </button>
+                    }
+                </div>
+            </div>
+            <div class="filter-group">
+                <span class="eyebrow muted">Mood</span>
+                <div class="flex flex-wrap gap-2" role="group" aria-label="Filter by mood">
+                    <button type="button" class="chip" aria-pressed="@Ui.Bool(mood is null)" @onclick="() => mood = null">Any</button>
+                    @foreach (var m in Enum.GetValues<TravelMood>())
+                    {
+                        <button type="button" class="chip" aria-pressed="@Ui.Bool(mood == m)" @onclick="() => mood = m">@TravelLabels.Label(m)</button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="filter-status">
+        <p class="text-sm" role="status">Showing <b class="num">@results.Count</b> of <span class="num">@SampleData.Destinations.Count</span> places</p>
+        <div class="flex flex-wrap items-center gap-5">
+            <label class="switch">
+                <input type="checkbox" @bind="savedOnly" />
+                <span class="track" aria-hidden="true"></span>
+                Saved only (<span class="num">@Saved.Count</span>)
+            </label>
+            <button type="button" class="link-arrow" @onclick="ClearFilters">Reset filters</button>
+        </div>
+    </div>
+</section>
+
+@* ============================== RESULTS ============================== *@
+<section class="wrap pt-12 pb-6" aria-label="Destinations">
+    @if (results.Count == 0)
+    {
+        <div class="empty-state" role="status">
+            <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="24" cy="24" r="20" /><path d="M24 4v6M24 38v6M4 24h6M38 24h6" /><path d="M30 18l-4 10-10 4 4-10z" /></svg>
+            <h2 class="section-title">Nothing on this <em>stretch of the map.</em></h2>
+            <p class="muted">@(savedOnly && Saved.Count == 0 ? "You haven't saved any places yet. Tap a heart to start a shortlist." : "Try another search, or loosen a filter.")</p>
+            <button type="button" class="btn-primary mt-3" @onclick="ClearFilters">Show all places</button>
+        </div>
+    }
+    else if (listView)
+    {
+        <div class="dest-list">
+            @for (var i = 0; i < results.Count; i++)
+            {
+                var place = results[i];
+                var isSaved = Saved.Contains(place.Id);
+                <div class="dest-row" style="--i:@i" @key="place.Id">
+                    <span class="idx num muted text-sm">@Ui.Pad(i + 1)</span>
+                    <img class="thumb" src="@place.ImagePath" alt="" loading="lazy" />
+                    <div class="min-w-0">
+                        <p class="eyebrow muted">@place.LocationLabel</p>
+                        <h2 class="mt-1"><button type="button" class="text-left hover:text-sun" @onclick="() => Open(place.Id)">@place.Name</button></h2>
+                    </div>
+                    <span class="hide-md hide-sm sticker justify-self-start">@place.MoodLabel</span>
+                    <span class="hide-sm num">@TravelLabels.Peso(place.DailyBudgetPerPerson)<span class="muted text-xs font-normal"> /day</span></span>
+                    <div class="row-actions">
+                        <button type="button" class="circle-button heart" aria-pressed="@Ui.Bool(isSaved)"
+                                aria-label="@(isSaved ? $"Remove {place.Name} from saved" : $"Save {place.Name}")" @onclick="() => Saved.Toggle(place.Id)"><HeartIcon /></button>
+                        <button type="button" class="icon-button" aria-label="Open details for @place.Name" @onclick="() => Open(place.Id)">→</button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="dest-grid">
+            @for (var i = 0; i < results.Count; i++)
+            {
+                var place = results[i];
+                var isSaved = Saved.Contains(place.Id);
+                <article class="dest-card" style="--i:@i" @key="place.Id">
+                    <div class="image-frame">
+                        <button type="button" class="absolute inset-0 block" aria-label="Open details for @place.Name" @onclick="() => Open(place.Id)">
+                            <img class="place-image" src="@place.ImagePath" alt="@place.ImageAlt" loading="lazy" />
+                        </button>
+                        <span class="sticker absolute left-4 top-4">@place.MoodLabel</span>
+                        <button type="button" class="circle-button heart absolute right-4 top-4" aria-pressed="@Ui.Bool(isSaved)"
+                                aria-label="@(isSaved ? $"Remove {place.Name} from saved" : $"Save {place.Name}")" @onclick="() => Saved.Toggle(place.Id)"><HeartIcon /></button>
+                    </div>
+                    <div class="meta"><span class="eyebrow muted">@place.LocationLabel</span><span class="num text-xs">@place.SuggestedDays days</span></div>
+                    <h2>@place.Name</h2>
+                    <p class="desc body-gap">@place.Description</p>
+                    <div class="foot">
+                        <div><p class="eyebrow muted">Daily guide / person</p><span class="num">@TravelLabels.Peso(place.DailyBudgetPerPerson)</span></div>
+                        <div><p class="eyebrow muted">Best time</p><span class="num">@place.BestTime</span></div>
+                    </div>
+                    <div class="actions">
+                        <button type="button" class="btn-outline" @onclick="() => Open(place.Id)">Details</button>
+                        <a href="@($"/plan?place={place.Id}")" class="btn-primary">Plan trip <span class="arrow" aria-hidden="true">↗</span></a>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</section>
+
+@* ============================== DETAIL DRAWER ============================== *@
+@if (Selected is { } sel)
+{
+    var nav = results.Any(d => d.Id == sel.Id) ? results : SampleData.Destinations.ToList();
+    var at = nav.FindIndex(d => d.Id == sel.Id);
+    var selSaved = Saved.Contains(sel.Id);
+
+    <div class="backdrop" @onclick="Close"></div>
+    <aside id="place-drawer" class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" tabindex="-1" @onkeydown="OnDrawerKey">
+        <div class="overlay-bar">
+            <span class="eyebrow muted"><span class="num">@Ui.Pad(at + 1)</span> / <span class="num">@Ui.Pad(nav.Count)</span></span>
+            <div class="flex gap-2">
+                <button type="button" class="icon-button" aria-label="Previous place" disabled="@(nav.Count < 2)" @onclick="() => Open(nav[(at - 1 + nav.Count) % nav.Count].Id)">←</button>
+                <button type="button" class="icon-button" aria-label="Next place" disabled="@(nav.Count < 2)" @onclick="() => Open(nav[(at + 1) % nav.Count].Id)">→</button>
+                <button type="button" class="icon-button" aria-label="Close details" @onclick="Close">✕</button>
+            </div>
+        </div>
+        <div class="image-frame" @key="sel.Id">
+            <img class="place-image" src="@sel.ImagePath" alt="@sel.ImageAlt" />
+            <span class="sticker absolute bottom-4 left-4">@sel.MoodLabel</span>
+        </div>
+        <div class="drawer-body">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <p class="eyebrow muted">@sel.LocationLabel</p>
+                <p class="num muted text-xs">@sel.CoordinateLabel</p>
+            </div>
+            <h2 id="drawer-title" class="section-title mt-3">@sel.Name</h2>
+            <p class="serif mt-2 text-xl italic text-sun">@sel.Tagline.</p>
+            <p class="mt-5 leading-7">@sel.Description</p>
+
+            <div class="facts mt-7">
+                <div><span class="eyebrow muted">Best time</span><span class="num">@sel.BestTime</span></div>
+                <div><span class="eyebrow muted">Stay</span><span class="num">@sel.SuggestedDays days</span></div>
+                <div><span class="eyebrow muted">Daily guide</span><span class="num">@TravelLabels.Peso(sel.DailyBudgetPerPerson)</span></div>
+            </div>
+
+            <p class="eyebrow mt-7 mb-4">Highlights</p>
+            <ul class="tick-list">
+                <li>@sel.SignatureExperience</li>
+                @foreach (var h in sel.Highlights)
+                {
+                    <li>@h</li>
+                }
+            </ul>
+
+            <div class="tip mt-7">
+                <p class="eyebrow mb-2 text-sun">A local-minded tip</p>
+                <p class="text-sm leading-6">@sel.InsiderTip</p>
+            </div>
+
+            <div class="mt-8 grid grid-cols-[auto_1fr] gap-3">
+                <button type="button" class="circle-button heart" aria-pressed="@Ui.Bool(selSaved)"
+                        aria-label="@(selSaved ? $"Remove {sel.Name} from saved" : $"Save {sel.Name}")" @onclick="() => Saved.Toggle(sel.Id)"><HeartIcon /></button>
+                <a href="@($"/plan?place={sel.Id}")" class="btn-sun">Plan this trip <span class="arrow" aria-hidden="true">↗</span></a>
+            </div>
+        </div>
+    </aside>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "region")] public string? RegionParam { get; set; }
+    [SupplyParameterFromQuery(Name = "mood")] public string? MoodParam { get; set; }
+    [SupplyParameterFromQuery(Name = "saved")] public bool? SavedParam { get; set; }
+    [SupplyParameterFromQuery(Name = "open")] public int? OpenParam { get; set; }
+
+    private string search = "";
+    private string sort = "curated";
+    private IslandGroup? region;
+    private TravelMood? mood;
+    private bool savedOnly;
+    private bool listView;
+    private bool filtersOpen;
+    private int? openId;
+    private bool focusDrawer;
+    private string? appliedQuery;
+
+    private Destination? Selected => openId is int id ? SampleData.FindDestination(id) : null;
+
+    private int ActiveFilterCount => (region is null ? 0 : 1) + (mood is null ? 0 : 1);
+
+    private List<Destination> Filtered
+    {
+        get
+        {
+            IEnumerable<Destination> list = SampleData.Destinations.Where(d => d.Matches(search));
+            if (region is not null) list = list.Where(d => d.IslandGroup == region);
+            if (mood is not null) list = list.Where(d => d.Mood == mood);
+            if (savedOnly) list = list.Where(d => Saved.Contains(d.Id));
+            return sort switch
+            {
+                "alphabetical" => list.OrderBy(d => d.Name).ToList(),
+                "affordable" => list.OrderBy(d => d.DailyBudgetPerPerson).ToList(),
+                "days" => list.OrderBy(d => d.SuggestedDays).ThenBy(d => d.Name).ToList(),
+                _ => list.OrderByDescending(d => d.Featured).ThenBy(d => d.Id).ToList()
+            };
+        }
+    }
+
+    protected override void OnInitialized() => Saved.Changed += OnSavedChanged;
+
+    protected override void OnParametersSet()
+    {
+        // Links like /discover?region=Luzon or /discover?open=3 preset the page once per distinct link.
+        var key = $"{RegionParam}|{MoodParam}|{SavedParam}|{OpenParam}";
+        if (key == appliedQuery) return;
+        appliedQuery = key;
+
+        if (Enum.TryParse<IslandGroup>(RegionParam, true, out var g)) region = g;
+        if (Enum.TryParse<TravelMood>(MoodParam, true, out var m)) mood = m;
+        if (SavedParam == true) savedOnly = true;
+        if (OpenParam is int id && SampleData.FindDestination(id) is not null) Open(id);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!focusDrawer) return;
+        focusDrawer = false;
+        try { await JS.InvokeVoidAsync("lakbay.openOverlay", "place-drawer"); }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    private void Open(int id)
+    {
+        openId = id;
+        focusDrawer = true;
+    }
+
+    private async Task Close()
+    {
+        openId = null;
+        try { await JS.InvokeVoidAsync("lakbay.closeOverlay"); }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    private async Task OnDrawerKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") { await Close(); return; }
+        if (e.Key is not ("ArrowRight" or "ArrowLeft") || Selected is null) return;
+
+        var nav = Filtered.Any(d => d.Id == openId) ? Filtered : SampleData.Destinations.ToList();
+        var at = nav.FindIndex(d => d.Id == openId);
+        var next = e.Key == "ArrowRight" ? (at + 1) % nav.Count : (at - 1 + nav.Count) % nav.Count;
+        Open(nav[next].Id);
+    }
+
+    private void ClearFilters()
+    {
+        search = "";
+        region = null;
+        mood = null;
+        sort = "curated";
+        savedOnly = false;
+    }
+
+    private void OnSavedChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Saved.Changed -= OnSavedChanged;
+}
