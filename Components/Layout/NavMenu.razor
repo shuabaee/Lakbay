@@ -1,0 +1,76 @@
+@rendermode InteractiveServer
+@implements IDisposable
+@inject SavedPlaces Saved
+
+<div class="topline">
+    <div class="wrap topline-inner">
+        <span>A travel field guide to the Philippines</span>
+        <span class="hide-sm">Luzon<span class="dot" aria-hidden="true">✳</span>Visayas<span class="dot" aria-hidden="true">✳</span>Mindanao</span>
+    </div>
+</div>
+
+<header class="site-header">
+    <div class="wrap header-inner">
+        <a class="brand" href="/" aria-label="Lakbay, home" @onclick="CloseMenu">
+            <span class="brand-symbol" aria-hidden="true">L</span>
+            <span class="brand-text">
+                <span class="brand-word">lakbay<span class="text-sun">.</span></span>
+                <span class="brand-caption">THE PHILIPPINE FIELD GUIDE</span>
+            </span>
+        </a>
+
+        <nav class="desktop-nav" aria-label="Main navigation">
+            @foreach (var link in links)
+            {
+                <NavLink class="nav-link" href="@link.Href" Match="@(link.Href == "/" ? NavLinkMatch.All : NavLinkMatch.Prefix)">@link.Text</NavLink>
+            }
+        </nav>
+
+        <div class="header-actions">
+            <a href="/discover?saved=true" class="saved-pill" aria-label="Saved places: @Saved.Count" @onclick="CloseMenu">
+                <span class="label">Saved</span>
+                <span class="num" @key="Saved.Count">@Saved.Count</span>
+            </a>
+            <a href="/discover" class="btn-primary nav-cta">Find your somewhere <span class="arrow" aria-hidden="true">↗</span></a>
+            <button type="button" class="menu-button" @onclick="ToggleMenu" aria-expanded="@Ui.Bool(menuOpen)" aria-controls="mobile-navigation">
+                <span class="menu-icon" aria-hidden="true"></span>
+                @(menuOpen ? "Close" : "Menu")
+            </button>
+        </div>
+    </div>
+
+    @if (menuOpen)
+    {
+        <nav class="mobile-nav" id="mobile-navigation" aria-label="Mobile navigation">
+            @for (var i = 0; i < links.Length; i++)
+            {
+                var link = links[i];
+                <NavLink class="nav-link" href="@link.Href" Match="@(link.Href == "/" ? NavLinkMatch.All : NavLinkMatch.Prefix)" @onclick="CloseMenu">
+                    @link.Text <small>@Ui.Pad(i + 1)</small>
+                </NavLink>
+            }
+            <a href="/discover" class="btn-sun mt-6" @onclick="CloseMenu">Find your somewhere <span class="arrow" aria-hidden="true">↗</span></a>
+        </nav>
+    }
+</header>
+
+@code {
+    private readonly (string Href, string Text)[] links =
+    {
+        ("/", "Home"),
+        ("/discover", "Discover"),
+        ("/journal", "Field notes"),
+        ("/plan", "Plan a trip")
+    };
+
+    private bool menuOpen;
+
+    protected override void OnInitialized() => Saved.Changed += OnSavedChanged;
+
+    private void OnSavedChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private void ToggleMenu() => menuOpen = !menuOpen;
+    private void CloseMenu() => menuOpen = false;
+
+    public void Dispose() => Saved.Changed -= OnSavedChanged;
+}

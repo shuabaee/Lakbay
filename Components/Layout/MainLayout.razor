@@ -1,0 +1,38 @@
+@inherits LayoutComponentBase
+
+<a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-whitewarm focus:p-3 focus:font-bold">Skip to content</a>
+
+<NavMenu />
+
+<main id="main">
+    @Body
+</main>
+
+<footer class="site-footer on-dark">
+    <div class="wrap footer-grid">
+        <div>
+            <p class="eyebrow text-gold">A love letter to the archipelago</p>
+            <h2 class="section-title mt-5 max-w-[480px]">The good kind of <em>getting lost.</em></h2>
+            <p class="mt-5 max-w-[360px] text-sm leading-7 text-[#c8d1c8]">Go curious. Tread lightly. Leave every place a little better than you found it.</p>
+        </div>
+        <nav aria-label="Footer">
+            <p class="eyebrow mb-4 text-gold">Find your way</p>
+            <ul class="grid">
+                <li><a href="/">The beginning</a></li>
+                <li><a href="/discover">Explore places</a></li>
+                <li><a href="/journal">Read field notes</a></li>
+                <li><a href="/plan">Sketch a trip</a></li>
+            </ul>
+        </nav>
+        <div>
+            <p class="eyebrow mb-4 text-gold">Made for wandering</p>
+            <p class="text-sm leading-7 text-[#c8d1c8]">Independent travel inspiration for the Philippines.</p>
+            <p class="mt-4 text-xs leading-6 text-[#c8d1c8]">All budgets are illustrative in PHP, not booking quotes.</p>
+        </div>
+    </div>
+    <div class="wrap flex flex-wrap items-center justify-between gap-3 border-t border-[#3c5a4f] py-6 text-[11px] tracking-[.08em] text-[#c8d1c8]">
+        <span>&copy; @DateTime.Now.Year LAKBAY. Made with love for the Philippines.</span>
+        <span><span class="num">7,641</span> islands. Countless stories.</span>
+    </div>
+    <div class="wrap footer-word" aria-hidden="true">lakbay.</div>
+</footer>
